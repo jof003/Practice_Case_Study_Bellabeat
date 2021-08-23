@@ -1,0 +1,171 @@
+---
+title: "Bellabeat_Analytics_Hourly"
+author: "Joanne Fil"
+date: "8/16/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Case Study 2: Bellabeat Analysis
+
+We are going to analyze smart device usage data in order to gain insight into how people are already using their smart devices. This is using the hourly data.
+
+### Install packages and set directory
+
+```{r cars}
+library(tidyverse)  #helps wrangle data
+library(lubridate)  #helps wrangle date attributes
+library(ggplot2)  #helps visualize data
+library(dplyr)
+```
+
+## Step 1: Collect data
+
+Hourly data
+
+```{r}
+hourly_Calories <- read.csv("Hourly/hourlyCalories_merged.csv")
+hourly_Intensities <- read.csv("Hourly/hourlyIntensities_merged.csv")
+hourly_Steps <- read.csv("Hourly/hourlySteps_merged.csv")
+```
+
+Explore some of the tables.
+
+```{r}
+head(hourly_Calories)
+colnames(hourly_Calories)
+
+head(hourly_Intensities)
+colnames(hourly_Intensities)
+
+head(hourly_Steps)
+colnames(hourly_Steps)
+```
+
+*Note* description of variables explored and column names in each csv file has been summarized in the excel file called "Datasets_organization' (provided within the same github file).
+
+## Step 2: Make some observations
+
+How many unique participants are in each dataframe?
+
+```{r}
+n_distinct(hourly_Calories$Id)
+n_distinct(hourly_Intensities$Id)
+n_distinct(hourly_Steps$Id)
+```
+
+How many observations in each dataframe?
+
+```{r}
+dim(hourly_Calories)
+dim(hourly_Intensities)
+dim(hourly_Steps)
+```
+
+Data types
+
+```{r}
+str(hourly_Calories)
+str(hourly_Intensities)
+str(hourly_Steps)
+```
+
+## Step 3: Wrangle data and combine into a single file
+
+We can combine the data sets into one large one.
+
+Remove duplicated rows.
+
+```{r}
+hourly_Calories_v2 <- hourly_Calories %>% distinct()
+hourly_Intensities_v2 <- hourly_Intensities %>% distinct()
+hourly_Steps_v2 <- hourly_Steps %>%  distinct()
+```
+
+Combine data sets by ID and date, using outer join so 'all = TRUE'.
+
+```{r}
+combined <- merge(hourly_Calories_v2, hourly_Intensities_v2, by = c("Id", "ActivityHour"), all = TRUE)
+combined <- merge(combined, hourly_Steps_v2, by = c("Id", "ActivityHour"), all = TRUE)
+```
+
+Rename 'ActivityHour' to 'date'
+
+```{r}
+combined <- rename(combined, date = ActivityHour)
+```
+
+Some quick summary statistics of calories, total intensity, average intensity, and total steps. This time we will keep the zeros (unlike when we removed them in the daily data set), because it is not uncommon that someone did zero steps in an hour (unlike the daily data set in which zero steps in one day is highly unlikely).
+
+```{r}
+combined %>%  
+  select(Calories,
+         TotalIntensity,
+         AverageIntensity,
+         StepTotal) %>%
+  summary()
+
+```
+
+The median Calories burned is 83, the median total intensity is 3.00 and average intensity of 0.05, and the median step total is 40 steps per hour.
+
+## Step 4: Plot
+
+We will mostly use Tableau to visualize this data set (for more practice since the daily data visualization was all in R), but will just look at the density plots for each measure here.
+
+We can plot the data to visually see the distribution using density plot and histogram (the density plot is a bit better because it is not confined by bins)
+ 
+load package
+```{r}
+library("ggpubr")
+```
+
+Calories plots
+```{r}
+ggdensity(combined$Calories,
+          main = "Density plot of Calories",
+          xlab = "Calories")
+
+hist(combined$Calories)
+```
+
+Total intensity plots
+
+```{r}
+ggdensity(combined$TotalIntensity,
+          main = "Density plot of TotalIntensity",
+          xlab = "TotalIntensity")
+
+hist(combined$TotalIntensity)
+```
+
+Total steps plots
+
+```{r}
+ggdensity(combined$StepTotal,
+          main = "Density plot of StepTotal",
+          xlab = "StepTotal")
+
+hist(combined$StepTotal)
+```
+
+## Step 5: Export the data
+Create a csv file that we will use to make visualizations in Tableau.
+
+```{r}
+write.csv(combined, file = 'hourly_activies.csv')
+```
+
+
+
+
+
+
+
+
+
+
+

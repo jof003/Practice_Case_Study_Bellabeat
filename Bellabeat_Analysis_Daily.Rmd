@@ -1,0 +1,393 @@
+---
+title: "Bellabeat Analytics"
+author: "Joanne Fil"
+date: "8/15/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Case Study 2: Bellabeat Analysis
+
+We are going to analyze smart device usage data in order to gain insight into how people are already using their smart devices.
+
+### Install packages and set directory
+
+```{r cars}
+library(tidyverse)  #helps wrangle data
+library(lubridate)  #helps wrangle date attributes
+library(ggplot2)  #helps visualize data
+library(dplyr)
+```
+
+## Step 1: Collect data
+
+Upload data - some files are presented in narrow (long) and wide format but present the same information, I prefer the long format so will exclude the wide ones.
+
+The 'daily activity' file includes the same information as the 'daily intensity', 'daily calories' and 'daily steps', so we don't need to load those files separately.
+
+```{r}
+daily_activity <- read.csv("Daily/dailyActivity_merged.csv")
+#daily_calories <- read.csv("Daily/dailyCalories_merged.csv")
+#daily_intensities <- read.csv("Daily/dailyIntensities_merged.csv")
+#daily_steps <- read.csv("Daily/dailySteps_merged.csv")
+day_sleep <- read.csv("Daily/sleepDay_merged.csv")
+weightLogInfo <- read.csv("Daily/weightLogInfo_merged.csv")
+```
+
+Let's explore some of the tables.
+
+```{r}
+head(daily_activity)
+colnames(daily_activity)
+
+head(day_sleep)
+colnames(day_sleep)
+
+head(weightLogInfo)
+colnames(weightLogInfo)
+```
+
+*Note* description of variables explored and column names in each csv file has been summarized in the excel file called "Datasets_organization' (provided within the same github file).
+
+## Step 2: Make some observations
+
+How many unique participants are in each dataframe?
+
+```{r}
+n_distinct(daily_activity$Id)
+n_distinct(day_sleep$Id)
+n_distinct(weightLogInfo$Id)
+```
+
+How many observations in each dataframe?
+
+```{r}
+dim(daily_activity)
+dim(day_sleep)
+dim(weightLogInfo)
+```
+
+Data types
+
+```{r}
+str(daily_activity)
+str(day_sleep)
+str(weightLogInfo)
+```
+
+## Step 3: Wrangle data and combine into a single file
+
+We can combine the daily sleep and weight information to the daily activity, since they include the ID, to make one large data set.
+
+First let's split up the date and time columns and then remove duplicated rows.
+
+```{r}
+day_sleep_v2 <- separate(day_sleep, SleepDay, into = c("date", "time", "AM_PM"), sep = " ") %>% distinct()
+weightLogInfo_v2 <- separate(weightLogInfo, Date, into = c("date", "time","AM_PM"), sep = " ") %>% distinct()
+```
+
+Now remove duplicate rows and rename 'ActivityDate' to just 'date'.
+
+```{r}
+daily_activity_v2 <- daily_activity %>% distinct()
+daily_activity_v2 <-rename(daily_activity_v2,date = ActivityDate)
+```
+
+Combine datasets by ID and date, using outer join so 'all = TRUE'.
+
+```{r}
+combined <- merge(daily_activity_v2, day_sleep_v2, by = c("Id", "date"), all = TRUE)
+combined <- merge(combined, weightLogInfo_v2, by = c("Id", "date"), all = TRUE)
+```
+
+Rename time and AM_PM so we know which corresponds to which dataset. 
+
+```{r}
+combined <- rename(combined,timeSleep = time.x, AM_PM_Sleep = AM_PM.x, timeweight = time.y,
+                   AM_PM_Weight = AM_PM.y)
+```
+
+Some quick summary statistics of steps, distance, and sedentary minutes.
+
+```{r}
+combined %>%  
+  select(TotalSteps,
+         TotalDistance,
+         SedentaryMinutes) %>%
+  summary()
+```
+
+Remove data that has 0 steps and 0 distance, as this may influence summary statistics.
+
+```{r}
+combined_noZeros <- combined[!(combined$TotalSteps < 0.01),]
+combined_noZeros %>%  
+  select(TotalSteps,
+         TotalDistance,
+         SedentaryMinutes) %>%
+  summary()
+```
+
+This group is getting an average of 8319 steps per day, 5.98 miles per day, and 955.8 minutes (around 16 hours) of being sedentary per day.
+
+We're getting a value of 0 for minimum distance which is strange because we removed 0 steps, so let's check why we're getting this value.
+
+```{r}
+combined_noZeros[which.min(combined_noZeros$TotalDistance),]
+```
+
+Participant only had 4 steps that day so that's why there was no distance noted.
+
+Now let's do some quick summary statistics of total sleep records, total minutes asleep, and total time in bed.
+
+```{r}
+combined_noZeros %>%  
+  select(TotalSleepRecords,
+         TotalMinutesAsleep,
+         TotalTimeInBed) %>%
+  summary()
+```
+
+On average participants slept around 419.2 minutes (around 7 hours) per day and spent 458.5 minutes (around 7.6 hours) per day in bed.
+
+Now let's do some quick summary statistics of calories and weight.
+
+```{r}
+combined_noZeros %>%  
+  select(Calories,
+         WeightKg) %>%
+  summary()
+```
+
+This group burned an average of 2361 calories per day and weigh an average of 72.04 kg (158 lbs).
+
+## Step 4: Plot
+
+Let's look at the relationship/pattern between steps taken in a day and sedentary minutes.
+
+```{r}
+ggplot(data=combined_noZeros, aes(x=TotalSteps, y=SedentaryMinutes)) + geom_point()
+```
+
+There appears to be somewhat of a negative relationship, but it is not very strong. We can attempt to perform a correlation analysis to see if there is a relationship or not. 
+
+To perform a correlation analysis, we must first check if x and y are normally distributed. Let's perform the Shapiro-Wilk normality test to check. If p-value > 0.05, this means the distribution of the data is not significantly different from normal (meaning the data is normal).
+
+```{r}
+shapiro.test(combined_noZeros$TotalSteps)
+```
+
+The p-value is less than 0.05, meaning the data is not normal.
+
+We can plot the data to visually see the distribution.
+
+```{r}
+library("ggpubr")
+ggdensity(combined_noZeros$TotalSteps,
+          main = "Density plot of Total Steps",
+          xlab = "Total Steps")
+```
+
+Now let's check the normality for y.
+
+```{r}
+shapiro.test(combined_noZeros$SedentaryMinutes)
+```
+
+The data is less than 0.05 meaning the data is not normal.
+
+We can plot the data to visually see the distribution.
+
+```{r}
+ggdensity(combined_noZeros$SedentaryMinutes,
+          main = "Density plot of SedentaryMinutes",
+          xlab = "SedentaryMinutes")
+```
+
+Due to the data being not normal in neither x nor y, we cannot perform a correlation analysis without having to transform the data to normality (which we will not be doing in this practice).
+
+Let's move on and look at the relationship/pattern between minutes asleep and time in bed. 
+
+```{r}
+ggplot(data=combined_noZeros, aes(x=TotalMinutesAsleep, y=TotalTimeInBed)) + geom_point()
+```
+
+There appears to be a strong postive relationship, but we cannot know for sure without performing a correlation analysis.
+
+First let's check the normality of x and y.
+
+```{r}
+shapiro.test(combined_noZeros$TotalMinutesAsleep)
+shapiro.test(combined_noZeros$TotalTimeInBed)
+```
+
+Let's visualize the data sets to see their distributions.
+
+```{r}
+ggdensity(combined_noZeros$TotalMinutesAsleep,
+          main = "Density plot of TotalMinutesAsleep",
+          xlab = "TotalMinutesAsleep")
+
+ggdensity(combined_noZeros$TotalTimeInBed,
+          main = "Density plot of TotalTimeInBed",
+          xlab = "TotalTimeInBed")
+```
+
+Although the data does look normally distributed, it is not according to the Shapiro-Wilks test (their p-values were less than 0.05). Therefore, we cannot fully conclude that there is a positive relationship between the two.
+
+Although they are not normal, let's continue playing with the dataset for practice. There were some outliers (were above the straight line in the plot of minutes asleep and time in bed), are they possibly related in some way? Let's see when we color the total steps.
+
+```{r}
+ggplot(data=combined_noZeros, aes(x=TotalMinutesAsleep, y=TotalTimeInBed)) + 
+  geom_point(mapping = aes(color = TotalSteps)) +
+  scale_colour_gradientn(colors=rainbow(4))
+```
+
+The outliers that are in the 200-400 total minutes asleep range appear to be participants that take around 8,000 to 15,000 steps per day. The outliers that are in the 600-800 total minutes asleep range appear to be participants that take less than 10,000 steps per day. Keep in mind the average number of total steps was 8,319 (and median 8035) per day.
+
+Let's see if participants who sleep more take more steps or fewer steps per day. 
+
+```{r}
+ggplot(data=combined_noZeros, aes(x=TotalMinutesAsleep, y=TotalSteps)) + geom_point()
+```
+
+There appears to be no relationship between the two. 
+
+Let's see if there's a relationship/pattern in sedentary minutes and calories.
+
+```{r}
+ggplot(data=combined_noZeros, aes(x=Calories, y=SedentaryMinutes)) + geom_point()
+```
+
+There appears to be is somewhat of a negative relationship but is very weak. We cannot perform a correlation plot (without transforming the data) because we know that SedendaryMinutes was not normal. We can look at the normality and distribution of Calories for extra practice. 
+
+```{r}
+shapiro.test(combined_noZeros$Calories)
+
+ggdensity(combined_noZeros$Calories,
+          main = "Density plot of Calories",
+          xlab = "Calories")
+```
+
+Let's move on and see if there's a relationship/pattern in weight and sedentary minutes
+
+```{r}
+ggplot(data=combined_noZeros, aes(x=WeightKg, y=SedentaryMinutes)) + geom_point()
+```
+
+Interestingly, there appears to be three clusters of weight ranges (one larger one around 60kg, one small one around 70kg, and one larger one around 85kg). 
+
+Also, it appears that individuals with lower weights tend to have fewer sedentary minutes, but do not know for certain because SedentaryMinutes does not have normal data and therefore we will not be performing a correlation analysis. We can check the normality and distribution of Weightkg for extra practice. 
+
+```{r}
+shapiro.test(combined_noZeros$WeightKg)
+
+ggdensity(combined_noZeros$WeightKg,
+          main = "Density plot of WeightKg",
+          xlab = "WeightKg")
+```
+
+Let's look at the different types of active distances, we first have to manipulate the data set (done in excel) so that we have two columns, activity type and distance/minutes.
+
+```{r}
+daily_minutes <- read.csv("Daily/dailyActivity_minutes.csv")
+daily_distance <- read.csv("Daily/dailyActivity_distance.csv")
+```
+
+Load programs and plot.
+
+```{r}
+library(ggridges)
+```
+
+Reorder the levels.
+
+```{r}
+daily_minutes <- daily_minutes %>% 
+  mutate(Activity_type = fct_relevel(Activity_type, levels = "SedentaryMinutes", "LightlyActiveMinutes", "FairlyActiveMinutes", "VeryActiveMinutes"))
+
+ggplot(daily_minutes, aes(x = Minutes, y = Activity_type, fill = Activity_type)) +
+  geom_density_ridges() +
+  theme_ridges() + 
+  theme(legend.position = "none")
+```
+
+Let's look at the different types of active minutes.
+
+```{r}
+daily_distance <- daily_distance %>% 
+  mutate(Activity_type = fct_relevel(Activity_type, levels = "SedentaryActiveDistance", "LightActiveDistance", "ModeratelyActiveDistance", "VeryActiveDistance"))
+
+ggplot(daily_distance, aes(x = Distance, y = Activity_type, fill = Activity_type)) +
+  geom_density_ridges() +
+  theme_ridges() + 
+  theme(legend.position = "none")
+```
+
+Now let's look at the relationship between total steps and calories.
+
+```{r}
+ggplot(data=combined_noZeros, aes(x=TotalSteps, y = Calories))+ geom_point() + stat_smooth(method=lm)
+```
+
+It looks like there's positive relationship between total steps and calories. Since we used a regression line, we assume that the residuals must be normally distributed and the variance of the residuals should be the same for the explanatory variables. Let's check double check for those assumption.
+
+```{r}
+calories_lm <- lm(Calories ~ TotalSteps, data = combined_noZeros)
+calories_res <- resid(calories_lm)
+```
+
+First let's look at the variance of the residuals.
+
+```{r}
+plot(combined_noZeros$TotalSteps, calories_res, ylab="Residuals",
+     xlab = "Total Steps", main = "Calories Burned")
+abline(0,0)
+```
+
+They seem to be similar in variation.
+
+Now let's look at normality.
+
+```{r}
+qqnorm(calories_res)
+qqline(calories_res)
+```
+
+It looks like the residuals are normally distributed. 
+
+Now we can get a summary of the linear model
+
+```{r}
+summary(calories_lm)
+```
+
+This tells us that 'Calories = 1669 + 0.0832 X TotalSteps' and the p-value for Total Steps is less than 0.05, meaning that it is significant significant. Therefore, the model will give us a reliable guess for the Calories if we have the number of Steps taken. 
+
+## Step 5: Export the data
+
+Create a csv file that we can use in the future if want to perform further analyses.
+
+We can filter out some of the columns to only include data would be using.
+
+```{r}
+filtered_combined_noZeros <- combined_noZeros %>% 
+  select('Id', 'TotalSteps', 'TotalDistance', 'VeryActiveDistance',	
+  'ModeratelyActiveDistance',	'LightActiveDistance',	'SedentaryActiveDistance',
+  'VeryActiveMinutes',	'FairlyActiveMinutes',	'LightlyActiveMinutes',
+  'SedentaryMinutes',	'Calories','TotalMinutesAsleep',	'TotalTimeInBed', 'WeightPounds')
+```
+
+
+```{r}
+write.csv(filtered_combined_noZeros, file = 'daily_activies_noZeros.csv')
+```
+
+## Some conclusions:
+
+More people log in their calories, steps taken, and intensities more than they log their sleep data. Very few individuals log in their weight. 
+
+Most of this data is not normally distributed, therefore we were unable to perform true correlation analysis in many of the variables. However, we can calculate an estimate of the calories burned by observing the number of steps taken. 
